@@ -1,4 +1,5 @@
 #r "nuget:fparsec"
+#r "nuget:fparsec"
 open FParsec
 
 open System
@@ -253,6 +254,7 @@ let solveWires _ =
                 else
                     ifEven
     | Some n ->   functionToUse n
+    |> printfn "Cut wire %d"
 
 let solveButton _ =
     Console.Write "What's the color of the button? : "
@@ -401,3 +403,27 @@ let solveMemory _ =
     printfn $"Finally, press the button with label {finall}"  
 
 
+let pWires = stringCIReturn "wires"  (Some solveWires)
+let pButton = stringCIReturn "button" (Some solveButton)
+let pKeypad = stringCIReturn "keypad" (Some solveKeypad) <|> stringCIReturn "symbols" (Some solveKeypad)
+let pMemory = stringCIReturn "memory" (Some solveMemory)
+let pSimon = stringCIReturn "simon" (Some solveSimon)
+let pQuit : Parser<(unit -> unit) option, unit> = stringCIReturn "defused" None <|> stringCIReturn "d"  None
+
+let pModule = pWires <|> pButton <|> pKeypad <|> pMemory <|> pSimon <|> pQuit
+
+
+let rec ktane() =
+    printfn "Which module ?"
+    let input = Console.ReadLine()
+    match run pModule input with
+    | Success(Some f,_,_) -> 
+        f()
+        ktane()
+    | Success(None,_,_) ->
+        printfn "GGs"
+    | Failure(_,_,_) -> 
+        printfn "Unknown module"
+        ktane()
+ktane()
+    
