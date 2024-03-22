@@ -1,7 +1,8 @@
 #r "nuget:fparsec"
-#r "nuget: Spectre.Console"
+#r "nuget: Spectre.Console, 0.48.1-preview.0.36 "
 open FParsec
 open Spectre.Console
+
 
 open System
 type Color =
@@ -21,7 +22,7 @@ type Color =
     static member ofString (str: string) =
         Color.ofChar str[0]
 
-    static member ConsolColor c =
+    static member ConsoleColor c =
         match c with
         | Black -> "black"
         | White -> "white"
@@ -41,8 +42,8 @@ type SimonColor =
         | SBlue -> 1
         | SGreen -> 2
         | SYellow -> 3
-    static member toString c =
-        match c with
+    override this.ToString() =
+        match this with
         | SRed -> "Red"
         | SBlue -> "Blue"
         | SGreen -> "Green"
@@ -69,12 +70,6 @@ let pColors = many (pColor .>> spaces)
 
 let pSimonColor = pSRed <|> pSBlue <|> pSGreen <|> pSYellow
 let pSimonColors = many (pSimonColor .>> spaces)
-
-let pYes = stringCIReturn "Yes" true <|> stringCIReturn "Y" true
-
-let pNo = stringCIReturn "No" false <|> stringCIReturn "N" false
-
-let pYN = pYes <|> pNo
 
 let pQ = stringCIReturn "Q" 'Ϙ'
 let pCo = stringCIReturn "Co" '©'
@@ -111,10 +106,6 @@ let oneColorIn input =
                             | Failure (e,_,_) -> failwith $"Incorrect input : {e}"
                             | Success (r,_,_) -> r[0]
 
-let getYNIn _ =
-    match (run pYN (Console.ReadLine ())) with
-                            | Failure (e,_,_) -> failwith $"Incorrect input : {e}"
-                            | Success (r,_,_) -> r
 
 let lastIndexOf value array =
     fst (Array.fold (fun (l,i) c -> if c=value then i,i+1 else l,i+1 ) (-1,0) array)
@@ -293,7 +284,7 @@ let fourWires colors =
             |> Array.countBy id
             |> Map.ofArray
         
-        let! isFirstCase = ~~(numberOf Red numberOfColors > 1) <||> lastSNDigitOdd()
+        let! isFirstCase = ~~(numberOf Red numberOfColors > 1) <&&> lastSNDigitOdd()
         if isFirstCase then
             return lastIndexOf Red colors + 1
         elif (colors[3]=Yellow && numberOf Red numberOfColors = 0) || (numberOf Blue numberOfColors = 1) then
@@ -343,26 +334,29 @@ let sixWires colors =
     }
 
 let printWire (colors: Color array) i =
-    let color = Color.ConsolColor colors[i]
+    let color = Color.ConsoleColor colors[i]
     AnsiConsole.MarkupLine $"Cut wire [{color}]{i}[/]"
 
-let solveWires() = 
+let rec solveWires() = 
     defuser {
-        Console.Write "What are the wire colors? : "
-        let colors = Console.ReadLine()
-        let colorCodes =
-            match (run pColors colors) with
-            | Failure (e,_,_) -> failwith $"Incorrect input : {e}"
-            | Success (r,_,_) -> r |> List.toArray
-
-        let! wireToCut = 
-            match colorCodes.Length with
-            | 3 -> threeWires colorCodes
-            | 4 -> fourWires colorCodes
-            | 5 -> fiveWires colorCodes
-            | 6 -> sixWires colorCodes
-            | _ -> failwith "Bad number of wires."
-        printWire colorCodes wireToCut
+        let colors = AnsiConsole.Prompt<string>(TextPrompt( "What are the wire colors? ") )
+        match (run pColors colors) with
+        | Failure (e,_,_) -> 
+            AnsiConsole.MarkupLine($"[red]Incorrect input[/] : {e}")
+            return! solveWires()
+        | Success( r,_,_) when r.Length < 3 || r.Length > 6 -> 
+            AnsiConsole.MarkupLine($"[red]Incorrect number of wires[/]")
+            return! solveWires()
+        | Success (r,_,_) ->
+            let colorCodes = r |> List.toArray
+            let! wireToCut = 
+                match colorCodes.Length with
+                | 3 -> threeWires colorCodes
+                | 4 -> fourWires colorCodes
+                | 5 -> fiveWires colorCodes
+                | 6 -> sixWires colorCodes
+                | _ -> failwith "this should not happen"
+            printWire colorCodes wireToCut
     }
 
 let moreBatteries n =
@@ -373,23 +367,23 @@ let moreBatteries n =
 
 let solveButton() =
     defuser {
-        let input = AnsiConsole.Ask "What's the color of the button? : "
+        let input = AnsiConsole.Ask "What's the color of the button? "
         let color = oneColorIn input
-        let text = AnsiConsole.Ask "What's written on the button? : "
+        let text = AnsiConsole.Ask "What's written on the button? "
         let! hold =
             defuser {
                 if color = Blue && (text =-= "Abort" || text =-= "Annuler") then
                     return true
                 else
-                    let! firstCase = ~~(text =-= "Detonate" || text =-= "Exploser") <||> moreBatteries 1
-                    if firstCase then
+                    let! secondCase = ~~(text =-= "Detonate" || text =-= "Exploser") <&&> moreBatteries 1
+                    if secondCase then
                         return false
                     else
                         let! isWhiteLitCar = ~~(color = White) <&&> getLitCAR()
                         if isWhiteLitCar then
                             return true
                         else
-                            let! moreThanTwoBatsAndFrk = moreBatteries 2 <||> getLitFRK()
+                            let! moreThanTwoBatsAndFrk = moreBatteries 2 <&&> getLitFRK()
                             if moreThanTwoBatsAndFrk then
                                 return false
                             elif color = Yellow then
@@ -397,17 +391,16 @@ let solveButton() =
                             elif color = Red && (text =-= "Hold" || text =-= "Maintenir") then
                                 return false
                             else
-
                                 return true
             }
         if hold then
             AnsiConsole.MarkupLine "Press and [green]hold[/] the button."
-            let input = AnsiConsole.Ask<string> "After few seconds, a strip will light up. What is its color? : "
+            let input = AnsiConsole.Ask<string> "After few seconds, a strip will light up. What is its color? "
             let stripcolor = oneColorIn input
             match stripcolor with
-            | Blue -> printfn "Release when there's a 4 somewhere on the timer."
-            | Yellow -> printfn "Release when there's a 5 somewhere on the timer."
-            | _ -> printfn "Release when there's a 1 somewhere on the timer."
+            | Blue -> AnsiConsole.MarkupLine "Release when there's a [green]4[/] somewhere on the timer."
+            | Yellow ->  AnsiConsole.MarkupLine "Release when there's a [green]5[/] somewhere on the timer."
+            | _ -> AnsiConsole.MarkupLine "Release when there's a [green]1[/] somewhere on the timer."
         else
             AnsiConsole.MarkupLine "Press the button and [red]immediatly release it[/]"
 
@@ -416,8 +409,7 @@ let solveButton() =
 let containsAll array elements =
     Array.fold(fun s e -> s && Array.contains e array) true elements
 
-let getSymbols _ = 
-    let text = Console.ReadLine ()
+let getSymbols text = 
     let parsed = run pSymbols text
     match parsed with
     | Failure (e,_,_) -> failwith $"Bad input : {e}"
@@ -431,20 +423,20 @@ let solveKeypad() =
                         [|'б'; '¶'; 'Ѣ'; 'Ѭ'; 'Җ'; '¿'; 'ټ'|]
                         [|'Ψ'; 'ټ'; 'Ѣ'; 'Ͼ'; '¶'; 'Ѯ'; '★'|]
                         [|'б'; 'Ӭ'; '҂'; 'æ'; 'Ψ'; 'Ҋ'; 'Ω'|]|]
-        printfn """Symbol names :
-    Ϙ:Q        ©:Co     б:6     Ψ:Psi      Ѧ:At     Ѽ:W
-    ¶:P        ټ:Sm     Ӭ:E     ƛ:Y        Ͽ/Ͼ:C    Ҩ:Ce
-    Ѣ:Bt       ҂:++     Ϟ:Z     Җ:Kk       Ѭ:Sp     æ:Ae
-    ☆/★:St    Ԇ:R      ϗ:H     ¿:?        Ѯ:3      Ҋ:N   
-    Ω:Om"""
-        Console.Write $"What are all the symbols (use the names over)? : "
-        let symbols = getSymbols()
+        AnsiConsole.MarkupLine """Symbol names :
+Ϙ:Q        ©:Co     б:6     Ψ:Psi      Ѧ:At     Ѽ:W
+¶:P        ټ:Sm     Ӭ:E     ƛ:Y        Ͽ/Ͼ:C    Ҩ:Ce
+Ѣ:Bt       ҂:++     Ϟ:Z     Җ:Kk       Ѭ:Sp     æ:Ae
+☆/★:St    Ԇ:R      ϗ:H     ¿:?        Ѯ:3      Ҋ:N   
+Ω:Om"""
+        let symbols = AnsiConsole.Ask "What are all the symbols (use the names over)? " |> getSymbols
+         
         let mutable col = columns[0]
         for c in columns do
             if containsAll c symbols then
                 col <- c
         let inOrder = Array.sortBy(fun e -> Array.IndexOf (col,e) ) symbols
-        printfn $"Press buttons in this order : {inOrder[0]} {inOrder[1]} {inOrder[2]} {inOrder[3]}"
+        AnsiConsole.MarkupLine $"Press buttons in this order : [green]{inOrder[0]} {inOrder[1]} {inOrder[2]} {inOrder[3]}[/]"
     }
 
 
@@ -458,14 +450,13 @@ let simonWithoutVoyel = [|[|SBlue;SYellow;SGreen;SRed|];[|SRed;SBlue;SYellow;SGr
 
 let rec solveSimon() =
     defuser {
-        let! voyel = hasVoyelInSN ()
+        let! voyel = hasVoyelInSN()
         let table = if voyel then
                         simonWithVoyel
                     else 
                         simonWithoutVoyel
         let moves = table[0]
-        Console.Write "What are the flashing colors? : "
-        let text = Console.ReadLine ()
+        let text = AnsiConsole.Ask<string>("What are the flashing colors? ")
         
         if text =-= "D" then
             ()
@@ -474,60 +465,61 @@ let rec solveSimon() =
                 match (run pSimonColors (text)) with
                 | Failure (e,_,_) -> failwith $"Bad input : {e}"
                 | Success (r,_,_) -> r
-            printf "Press these colors : "
+            AnsiConsole.MarkupLine "Press these colors : "
             for c in colorsIn do
-                printf $"{SimonColor.toString moves[SimonColor.toInt c]} "
-            printfn ""
+                let color = moves[SimonColor.toInt c] 
+                AnsiConsole.Markup $"[{color}]{color}[/] "
+
+            AnsiConsole.MarkupLine ""
             return! solveSimon()
     }
 
 let rec askNumberMemory (m:string) =
-    Console.Write m
-    let input=int (Console.ReadLine ())
+    let input= AnsiConsole.Ask<int> m
     if input > 4 || input < 1 then
-        printfn "nope"
+        AnsiConsole.MarkupLine "[red]nope[/]"
         askNumberMemory m
     else
         input
 
 let AskMemoryWithLabel l =
-    let p = askNumberMemory $"Press the button with label {l} and tell its position : "
+    let p = askNumberMemory $"Press the button with [green]label {l}[/] and tell its position : "
     p,l
 
 let AskMemoryWithPosition p =
-    let l = askNumberMemory $"Press the button in position {p} and tell its label : "
+    let l = askNumberMemory $"Press the button in [yellow]position {p}[/] and tell its label : "
     p,l
 
 let solveMemory() =
     defuser {
         let stage1p,stage1l =
-            match askNumberMemory "What is the number on the screen ? : " with
+            match askNumberMemory "What is the number [blue]on the screen[/] ? " with
             | 1|2 -> AskMemoryWithPosition 2
             | 3 -> AskMemoryWithPosition 3
             | _ -> AskMemoryWithPosition 4
         let stage2p,stage2l =
-            match askNumberMemory "Now, what is the number on the screen ? : " with
+            match askNumberMemory "Now, what is the number [blue]on the screen[/] ? " with
             | 1 -> AskMemoryWithLabel 4
             | 3 -> AskMemoryWithPosition 1
             | _ -> AskMemoryWithPosition stage1p
         let _,stage3l =
-            match askNumberMemory "Now, what is the number on the screen ? : " with
+            match askNumberMemory "Now, what is the number [blue]on the screen[/] ? " with
             | 1 -> AskMemoryWithLabel stage2l
             | 2 -> AskMemoryWithLabel stage1l
             | 3 -> AskMemoryWithPosition 3
             | _ -> AskMemoryWithLabel 4
         let stage4p,stage4l =
-            match askNumberMemory "Now, what is the number on the screen ? : " with
+            match askNumberMemory "Now, what is the number [blue]on the screen[/] ? " with
             | 1 -> AskMemoryWithPosition stage1p
             | 2 -> AskMemoryWithPosition 1
             | _ -> AskMemoryWithPosition stage2p
         let finall =
-            match askNumberMemory "Now, what is the number on the screen ? : " with
+            match askNumberMemory "Now, what is the number [blue]on the screen[/] ? " with
             | 1 -> stage1l
             | 2 -> stage2l
             | 3 -> stage4l
             | _ -> stage3l
-        printfn $"Finally, press the button with label {finall}"  
+        AnsiConsole.MarkupLine $"Finally, press the button with [green]label {finall}[/]"  
     }
 
 
@@ -543,19 +535,25 @@ let pModule = pWires <|> pButton <|> pKeypad <|> pMemory <|> pSimon <|> pQuit
 
 let rec ktane() =
     defuser {
-        printfn "Which module ?"
-        let input = Console.ReadLine()
+        
+        let input = AnsiConsole.Prompt(
+            SelectionPrompt<string>()
+                .EnableSearch()
+                .Title("Which module ?")
+                .AddChoices([ "Wires"; "Button"; "Keypad"; "Simon"; "Memory"; "Defuse" ])
+                .Mode(SelectionMode.Independent)
+                .WrapAround(true)
+        ) 
         match run pModule input with
         | Success(Some f,_,_) -> 
             do! f()
             do! ktane()
         | Success(None,_,_) ->
-            printfn "GGs"
+            AnsiConsole.MarkupLine "[green]GGs[/]"
         | Failure(_,_,_) -> 
-            printfn "Unknown module"
+            AnsiConsole.MarkupLine "[red]Unknown module[/]"
             do! ktane()
     }
 
 
 ktane () Bomb.empty
-    
