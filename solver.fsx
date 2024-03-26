@@ -537,12 +537,12 @@ let rec ktane() =
     defuser {
         
         let input = AnsiConsole.Prompt(
-            SelectionPrompt<string>()
+            SelectionPrompt<string>(
+                    Title = "Which module ?",
+                    Mode = SelectionMode.Independent,
+                    WrapAround = true)
                 .EnableSearch()
-                .Title("Which module ?")
                 .AddChoices([ "Wires"; "Button"; "Keypad"; "Simon"; "Memory"; "Defuse" ])
-                .Mode(SelectionMode.Independent)
-                .WrapAround(true)
         ) 
         match run pModule input with
         | Success(Some f,_,_) -> 
